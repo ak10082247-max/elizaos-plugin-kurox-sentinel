@@ -20,6 +20,7 @@ const guardInputs_1 = require("./actions/guardInputs");
 __exportStar(require("./types"), exports);
 __exportStar(require("./actions/simulateTrade"), exports);
 __exportStar(require("./actions/guardInputs"), exports);
+__exportStar(require("./x402Signer"), exports);
 exports.kuroxSentinelPlugin = {
     name: "kurox-sentinel",
     description: "Autonomous pre-trade DEX honeypot verification and prompt-injection defense plugin for ElizaOS agents on Base and Solana",

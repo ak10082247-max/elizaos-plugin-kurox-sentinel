@@ -9,7 +9,12 @@
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "viem": ["../../rugshield-402/node_modules/viem"],
+      "viem/*": ["../../rugshield-402/node_modules/viem/*"]
+    }
   },
   "include": ["src/**/*"]
 }

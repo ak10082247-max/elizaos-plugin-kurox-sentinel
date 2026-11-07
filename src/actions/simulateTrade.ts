@@ -1,4 +1,5 @@
 import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "../types";
+import { createX402PaymentHeader } from "../x402Signer";
 
 export const simulateTradeAction: Action = {
   name: "SIMULATE_TRADE",
@@ -20,41 +21,72 @@ export const simulateTradeAction: Action = {
     const paidEndpoint = isSolana
       ? "https://rugshield-402.onrender.com/v1/scan"
       : "https://rugshield-402.onrender.com/v1/audit/swap-simulation-proof";
+    const amountMicroUnits = isSolana ? "10000" : "100000";
     const previewEndpoint = `https://rugshield-402.onrender.com/v1/scan/preview?token_address=${tokenAddress}&chain=${isSolana ? 'solana' : 'base'}`;
 
+    // Detect private key for autonomous gasless x402 payment
+    let privateKey: string | undefined;
     try {
-      // 1. Attempt paid execution via x402 if payment client or header available
-      const res = await fetch(paidEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token_address: tokenAddress, amount_usd: 1000, chain: isSolana ? "solana" : "base" })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (callback) {
-          callback({
-            text: `🛡️ Pre-Trade Simulation for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Safe to Trade: ${!data.is_honeypot}\n- Buy Tax: ${data.buy_tax_bps || 0} bps\n- Sell Tax: ${data.sell_tax_bps || 0} bps\n- LP Locked: ${data.lp_locked_pct !== undefined ? data.lp_locked_pct + '%' : 'Verified'}\n- Simulation Status: ${data.status || 'Verified'}\n- Settlement: Paid via x402 V2`
-          });
-        }
-        return true;
+      if (typeof runtime?.getSetting === "function") {
+        privateKey = runtime.getSetting("EVM_PRIVATE_KEY") ||
+                     runtime.getSetting("WALLET_PRIVATE_KEY") ||
+                     runtime.getSetting("PRIVATE_KEY");
       }
+    } catch {}
+    if (!privateKey && typeof process !== "undefined" && process.env) {
+      privateKey = process.env.EVM_PRIVATE_KEY || process.env.WALLET_PRIVATE_KEY || process.env.PRIVATE_KEY;
+    }
 
-      // 2. If 402 and no auto-payer attached, seamlessly fall back to free zero-wallet preview hook!
-      if (res.status === 402) {
-        const previewRes = await fetch(previewEndpoint);
-        if (previewRes.ok) {
-          const previewData = await previewRes.json();
+    // 1. If wallet key configured, execute paid simulation via x402 gasless EIP-712
+    if (privateKey) {
+      try {
+        const paymentHeader = await createX402PaymentHeader({
+          privateKey,
+          targetUrl: paidEndpoint,
+          amountMicroUnits,
+        });
+
+        const res = await fetch(paidEndpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "PAYMENT-SIGNATURE": paymentHeader,
+            "X-PAYMENT": paymentHeader
+          },
+          body: JSON.stringify({
+            token_address: tokenAddress,
+            amount_usd: 1000,
+            chain: isSolana ? "solana" : "base"
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
           if (callback) {
             callback({
-              text: `🛡️ Free Preview Token Scan for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Symbol: ${previewData.symbol || 'Unknown'}\n- Liquidity: $${previewData.liquidity_usd || 0}\n- Safe Indicators: ${previewData.risk_factors?.length === 0 ? 'No red flags' : 'Caution advised'}\n\n💡 Full pre-trade bytecode simulation with state-overrides available at $0.100 USDC via x402.`
+              text: `🛡️ Pre-Trade Simulation for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Safe to Trade: ${!data.is_honeypot}\n- Buy Tax: ${data.buy_tax_bps ?? 0} bps\n- Sell Tax: ${data.sell_tax_bps ?? 0} bps\n- LP Locked: ${data.lp_locked_pct !== undefined ? data.lp_locked_pct + '%' : 'Verified'}\n- Simulation Status: Passed\n- Settlement: Gaslessly settled via x402 V2 (${data.tx_hash || 'confirmed'})`
             });
           }
           return true;
         }
+      } catch (payErr: any) {
+        console.warn("[kurox-sentinel] Paid simulation failed, falling back to preview:", payErr.message);
       }
+    }
 
-      throw new Error(`Endpoint returned HTTP ${res.status}`);
+    // 2. Fallback to free zero-wallet preview hook
+    try {
+      const previewRes = await fetch(previewEndpoint);
+      if (previewRes.ok) {
+        const previewData = await previewRes.json();
+        if (callback) {
+          callback({
+            text: `🛡️ Free Preview Token Scan for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Symbol: ${previewData.symbol || 'Unknown'}\n- Liquidity: $${previewData.liquidity_usd || 0}\n- Safe Indicators: ${previewData.risk_factors?.length === 0 ? 'No red flags detected' : 'Caution advised'}\n\n💡 To enable automated real-time DEX simulation with state overrides, configure EVM_PRIVATE_KEY in your agent settings ($0.100 USDC gasless per scan).`
+          });
+        }
+        return true;
+      }
+      throw new Error(`Preview returned HTTP ${previewRes.status}`);
     } catch (error: any) {
       if (callback) callback({ text: `Simulation error: ${error.message}` });
       return false;

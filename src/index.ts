@@ -1,10 +1,12 @@
 import type { Plugin } from "./types";
 import { simulateTradeAction } from "./actions/simulateTrade";
 import { guardInputsAction } from "./actions/guardInputs";
+import { createX402PaymentHeader } from "./x402Signer";
 
 export * from "./types";
 export * from "./actions/simulateTrade";
 export * from "./actions/guardInputs";
+export * from "./x402Signer";
 
 export const kuroxSentinelPlugin: Plugin = {
   name: "kurox-sentinel",
