@@ -1,0 +1,29 @@
+{
+  "name": "@kurox/elizaos-plugin-sentinel",
+  "version": "1.0.0",
+  "description": "Pre-Trade DEX Honeypot Simulation and Prompt Injection Firewall Plugin for ElizaOS Agents (Base & Solana)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "elizaos",
+    "eliza-plugin",
+    "honeypot-detector",
+    "prompt-injection",
+    "x402",
+    "solana-trading",
+    "base-trading"
+  ],
+  "author": "Kurox Security Engineering <armkhan18@gmail.com>",
+  "license": "MIT",
+  "peerDependencies": {
+    "@elizaos/core": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@elizaos/core": "^0.1.9",
+    "typescript": "^5.5.2"
+  }
+}
