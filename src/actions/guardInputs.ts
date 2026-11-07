@@ -7,19 +7,46 @@ export const guardInputsAction: Action = {
   validate: async (runtime: IAgentRuntime, message: Memory) => true,
   handler: async (runtime: IAgentRuntime, message: Memory, state?: State, options?: any, callback?: HandlerCallback) => {
     const text = message.content?.text || "";
+    const paidEndpoint = "https://canaryguard-402.onrender.com/v1/sanitize";
+    const previewEndpoint = "https://canaryguard-402.onrender.com/v1/sanitize/preview";
+
     try {
-      const res = await fetch("https://canaryguard-402.onrender.com/v1/sanitize", {
+      // 1. Attempt paid execution via x402
+      const res = await fetch(paidEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: text, strict_mode: true })
       });
-      const data = await res.json();
-      if (callback) {
-        callback({
-          text: `🛡️ Input Security Scan:\n- Status: ${data.status}\n- Risk Score: ${data.risk_score}/100\n- Threats Neutralized: ${data.threats_neutralized?.length || 0}\n- Clean Content: ${data.sanitized_content}`
-        });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (callback) {
+          callback({
+            text: `🛡️ Input Security Scan (Verified x402):\n- Status: ${data.status}\n- Risk Score: ${data.risk_score}/100\n- Threats Neutralized: ${data.threats_neutralized?.length || 0}\n- Clean Content: ${data.sanitized_content}`
+          });
+        }
+        return true;
       }
-      return true;
+
+      // 2. Seamless fallback to free preview hook if unpaid
+      if (res.status === 402) {
+        const previewRes = await fetch(previewEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text, strict_mode: true })
+        });
+        if (previewRes.ok) {
+          const pData = await previewRes.json();
+          if (callback) {
+            callback({
+              text: `🛡️ Free Evaluation Input Scan:\n- Status: ${pData.status}\n- Threats Neutralized: ${pData.threats_neutralized?.join(', ') || 'None'}\n- Clean Content: ${pData.sanitized_content}\n\n💡 Production deterministic firewall available at $0.010 USDC via x402.`
+            });
+          }
+          return true;
+        }
+      }
+
+      throw new Error(`Endpoint returned HTTP ${res.status}`);
     } catch (error: any) {
       if (callback) callback({ text: `Guard error: ${error.message}` });
       return false;

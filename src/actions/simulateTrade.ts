@@ -17,23 +17,44 @@ export const simulateTradeAction: Action = {
     }
 
     const isSolana = !baseMatch && !!solanaMatch;
-    const endpoint = isSolana
+    const paidEndpoint = isSolana
       ? "https://rugshield-402.onrender.com/v1/scan"
       : "https://rugshield-402.onrender.com/v1/audit/swap-simulation-proof";
+    const previewEndpoint = `https://rugshield-402.onrender.com/v1/scan/preview?token_address=${tokenAddress}&chain=${isSolana ? 'solana' : 'base'}`;
 
     try {
-      const res = await fetch(endpoint, {
+      // 1. Attempt paid execution via x402 if payment client or header available
+      const res = await fetch(paidEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token_address: tokenAddress, amount_usd: 1000, chain: isSolana ? "solana" : "base" })
       });
-      const data = await res.json();
-      if (callback) {
-        callback({
-          text: `🛡️ Pre-Trade Simulation for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Safe to Trade: ${!data.is_honeypot}\n- Buy Tax: ${data.buy_tax_bps || 0} bps\n- Sell Tax: ${data.sell_tax_bps || 0} bps\n- LP Locked: ${data.lp_locked_pct !== undefined ? data.lp_locked_pct + '%' : 'Verified'}\n- Simulation Status: ${data.status || 'Verified'}`
-        });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (callback) {
+          callback({
+            text: `🛡️ Pre-Trade Simulation for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Safe to Trade: ${!data.is_honeypot}\n- Buy Tax: ${data.buy_tax_bps || 0} bps\n- Sell Tax: ${data.sell_tax_bps || 0} bps\n- LP Locked: ${data.lp_locked_pct !== undefined ? data.lp_locked_pct + '%' : 'Verified'}\n- Simulation Status: ${data.status || 'Verified'}\n- Settlement: Paid via x402 V2`
+          });
+        }
+        return true;
       }
-      return true;
+
+      // 2. If 402 and no auto-payer attached, seamlessly fall back to free zero-wallet preview hook!
+      if (res.status === 402) {
+        const previewRes = await fetch(previewEndpoint);
+        if (previewRes.ok) {
+          const previewData = await previewRes.json();
+          if (callback) {
+            callback({
+              text: `🛡️ Free Preview Token Scan for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Symbol: ${previewData.symbol || 'Unknown'}\n- Liquidity: $${previewData.liquidity_usd || 0}\n- Safe Indicators: ${previewData.risk_factors?.length === 0 ? 'No red flags' : 'Caution advised'}\n\n💡 Full pre-trade bytecode simulation with state-overrides available at $0.100 USDC via x402.`
+            });
+          }
+          return true;
+        }
+      }
+
+      throw new Error(`Endpoint returned HTTP ${res.status}`);
     } catch (error: any) {
       if (callback) callback({ text: `Simulation error: ${error.message}` });
       return false;
