@@ -1,6 +1,6 @@
 {
   "name": "elizaos-plugin-kurox-sentinel",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Pre-Trade DEX Honeypot Simulation and Prompt Injection Firewall Plugin with Autonomous Gasless x402 Micropayments for ElizaOS Agents (Base & Solana)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

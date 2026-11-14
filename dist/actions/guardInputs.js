@@ -44,9 +44,19 @@ exports.guardInputsAction = {
                 });
                 if (res.ok) {
                     const data = await res.json();
+                    let receiptTx = data.tx_hash || data.safety_receipt || "settled";
+                    try {
+                        const prHeader = res.headers.get("PAYMENT-RESPONSE");
+                        if (prHeader) {
+                            const decoded = JSON.parse(Buffer.from(prHeader, "base64").toString("utf8"));
+                            if (decoded?.transaction)
+                                receiptTx = decoded.transaction;
+                        }
+                    }
+                    catch { }
                     if (callback) {
                         callback({
-                            text: `🛡️ Input Security Scan (Verified x402):\n- Status: ${data.status}\n- Risk Score: ${data.risk_score}/100\n- Threats Neutralized: ${data.threats_neutralized?.length || 0}\n- Clean Content: ${data.sanitized_content}\n- Settlement: Gaslessly settled via x402 V2 (${data.tx_hash || 'confirmed'})`
+                            text: `🛡️ Input Security Scan (Verified x402):\n- Status: ${data.status ?? "unknown"}\n- Risk Score: ${Math.round(Number(data.risk_score ?? 0) * 100)}/100\n- Threats Neutralized: ${data.threats_neutralized?.length || 0}\n- Clean Content: ${data.sanitized_content ?? ""}\n- Settlement: Settled via x402 V2 (${receiptTx})`
                         });
                     }
                     return true;
@@ -67,7 +77,7 @@ exports.guardInputsAction = {
                 const pData = await previewRes.json();
                 if (callback) {
                     callback({
-                        text: `🛡️ Free Evaluation Input Scan:\n- Status: ${pData.status}\n- Threats Neutralized: ${pData.threats_neutralized?.join(', ') || 'None'}\n- Clean Content: ${pData.sanitized_content}\n\n💡 Production deterministic firewall available at $0.010 USDC via x402 with EVM_PRIVATE_KEY.`
+                        text: `🛡️ Free Evaluation Input Scan:\n- Status: ${pData.status ?? "unknown"}\n- Risk Score: ${Math.round(Number(pData.risk_score ?? 0) * 100)}/100\n- Threats Neutralized: ${pData.threats_neutralized?.join(", ") || "None"}\n- Clean Content: ${pData.sanitized_content ?? ""}\n\n💡 Production deterministic firewall available at $0.010 USDC via x402 with EVM_PRIVATE_KEY.`
                     });
                 }
                 return true;
