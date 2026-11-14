@@ -62,9 +62,22 @@ export const simulateTradeAction: Action = {
 
         if (res.ok) {
           const data = await res.json();
+          const safeToTrade = data.is_honeypot === false
+            ? "true"
+            : data.is_honeypot === true
+              ? "false (HONEYPOT)"
+              : "Unverified";
+          let receiptTx = data.tx_hash || "settled";
+          try {
+            const prHeader = res.headers.get("PAYMENT-RESPONSE");
+            if (prHeader) {
+              const decoded = JSON.parse(Buffer.from(prHeader, "base64").toString("utf8"));
+              if (decoded?.transaction) receiptTx = decoded.transaction;
+            }
+          } catch {}
           if (callback) {
             callback({
-              text: `🛡️ Pre-Trade Simulation for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Safe to Trade: ${!data.is_honeypot}\n- Buy Tax: ${data.buy_tax_bps ?? 0} bps\n- Sell Tax: ${data.sell_tax_bps ?? 0} bps\n- LP Locked: ${data.lp_locked_pct !== undefined ? data.lp_locked_pct + '%' : 'Verified'}\n- Simulation Status: Passed\n- Settlement: Gaslessly settled via x402 V2 (${data.tx_hash || 'confirmed'})`
+              text: `🛡️ Pre-Trade Simulation for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Safe to Trade: ${safeToTrade}\n- Buy Tax: ${typeof data.buy_tax_bps === 'number' ? data.buy_tax_bps + ' bps' : 'Unverified'}\n- Sell Tax: ${typeof data.sell_tax_bps === 'number' ? data.sell_tax_bps + ' bps' : 'Unverified'}\n- LP Locked: ${typeof data.lp_locked_pct === 'number' ? data.lp_locked_pct + '%' : 'Unverified'}\n- Simulation Status: ${data.simulation_status ?? 'unverified'}\n- Settlement: Settled via x402 V2 (${receiptTx})`
             });
           }
           return true;
@@ -79,9 +92,14 @@ export const simulateTradeAction: Action = {
       const previewRes = await fetch(previewEndpoint);
       if (previewRes.ok) {
         const previewData = await previewRes.json();
+        const riskList = Array.isArray(previewData.risk_flags)
+          ? previewData.risk_flags
+          : Array.isArray(previewData.risk_factors)
+            ? previewData.risk_factors
+            : null;
         if (callback) {
           callback({
-            text: `🛡️ Free Preview Token Scan for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Symbol: ${previewData.symbol || 'Unknown'}\n- Liquidity: $${previewData.liquidity_usd || 0}\n- Safe Indicators: ${previewData.risk_factors?.length === 0 ? 'No red flags detected' : 'Caution advised'}\n\n💡 To enable automated real-time DEX simulation with state overrides, configure EVM_PRIVATE_KEY in your agent settings ($0.100 USDC gasless per scan).`
+            text: `🛡️ Free Preview Token Scan for ${tokenAddress} (${isSolana ? 'Solana' : 'Base'}):\n- Symbol: ${previewData.symbol || 'Unknown'}\n- Liquidity: ${typeof previewData.liquidity_usd === 'number' ? '$' + previewData.liquidity_usd.toLocaleString() : 'Unknown'}\n- Honeypot Check: ${typeof previewData.is_honeypot === 'boolean' ? String(previewData.is_honeypot) : 'Unsimulated (preview only)'}\n- Risk Indicators: ${riskList ? (riskList.length ? riskList.join(', ') : 'None flagged in preview') : 'Unverified'}\n\n💡 For full DEX swap simulation (buy/sell taxes and honeypot verification), configure EVM_PRIVATE_KEY ($0.100 USDC on Base / $0.010 USDC Solana scan via x402).`
           });
         }
         return true;
